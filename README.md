@@ -44,4 +44,5 @@ python analysis/quant_eda.py
 python analysis/interactive_dashboard.py
 PYTHONPATH=. python analysis/walk_forward.py
 python analysis/strategy_diagnostics.py
+PYTHONPATH=. python analysis/stress_multisleeve.py
 ```
