@@ -11,6 +11,8 @@ Generated from `prices.txt` with 500 daily observations and 51 assets.
 - Strongest full-sample drift: **OTCS, CUBO, RRES, MMBT, ILVX**.
 - Weakest full-sample drift: **FARS, NPCK, EAFC, MHRM, SRNA**.
 - 20-day reversal mean next-day cross-sectional IC: **0.022** (t-stat **2.74**).
+- Day-500 average pair correlation over 20/60/120-day windows: **0.182 / 0.172 / 0.197**.
+- Day-500 median annualized volatility over 20/60/120-day windows: **34.0% / 32.9% / 32.6%**.
 
 These are exploratory in-sample statistics, not guarantees of hidden-window performance. Strategy selection should use walk-forward tests.
 
@@ -31,6 +33,8 @@ These are exploratory in-sample statistics, not guarantees of hidden-window perf
 ![Clustering](figures/13_correlation_dendrogram.png)
 ![Forward IC](figures/14_forward_ic.png)
 ![Regimes](figures/15_market_regimes.png)
+![Rolling correlation snapshots](figures/19_rolling_correlation_snapshots.png)
+![Rolling dependence regimes](figures/20_rolling_dependence_regimes.png)
 
 ## Per-asset technical dashboards
 
@@ -47,3 +51,5 @@ Walk-forward results are stored in `tables/walk_forward.csv`. The final visible-
 ## Machine-readable results
 
 The `tables/` directory contains the summary statistics, covariance/correlation matrices, rolling volatility, autocorrelations, PCA results, and forward information coefficients.
+
+The standalone interactive dashboard is available at `interactive_dashboard.html`; its covariance/correlation matrix can be moved through time and switched among 20-, 60-, and 120-day windows.

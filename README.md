@@ -37,8 +37,11 @@ Post in the questions forum on our Discord - moderators are there to help.
 
 The reproducible quantitative EDA, per-asset technical dashboards, covariance/PCA analysis, strategy diagnostics, walk-forward results, and independent Claude review are under [`analysis/`](analysis/). Generate or refresh them with:
 
+Open [`analysis/output/interactive_dashboard.html`](analysis/output/interactive_dashboard.html) locally for the adjustable rolling covariance, correlation, volatility, regime, risk-return, drawdown, and technical-indicator views.
+
 ```bash
 python analysis/quant_eda.py
+python analysis/interactive_dashboard.py
 PYTHONPATH=. python analysis/walk_forward.py
 python analysis/strategy_diagnostics.py
 ```

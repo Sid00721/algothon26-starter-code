@@ -247,6 +247,60 @@ def create_report(prices_path: Path, output: Path) -> None:
     ax.legend()
     savefig(figures / "15_market_regimes.png")
 
+    snapshot_days = (250, 375, 500)
+    snapshot_windows = (20, 60, 120)
+    fig, axes = plt.subplots(3, 3, figsize=(17, 15))
+    for row, window in enumerate(snapshot_windows):
+        for column, end_day in enumerate(snapshot_days):
+            sample = returns.iloc[max(1, end_day - window) : end_day]
+            matrix = sample.corr()
+            image = axes[row, column].imshow(matrix, cmap="coolwarm", vmin=-1, vmax=1, aspect="auto")
+            axes[row, column].set_title(f"{window}d window ending day {end_day}")
+            if column == 0:
+                axes[row, column].set_yticks(np.arange(len(prices.columns)), prices.columns, fontsize=4)
+            else:
+                axes[row, column].set_yticks([])
+            if row == len(snapshot_windows) - 1:
+                axes[row, column].set_xticks(np.arange(len(prices.columns)), prices.columns, rotation=90, fontsize=4)
+            else:
+                axes[row, column].set_xticks([])
+    fig.colorbar(image, ax=axes.ravel().tolist(), label="Correlation", shrink=0.65)
+    fig.suptitle("How the return correlation structure changes by date and window", fontsize=15)
+    savefig(figures / "19_rolling_correlation_snapshots.png")
+
+    dependence_records = []
+    for window in snapshot_windows:
+        for end_day in range(window + 1, len(returns) + 1):
+            sample = returns.iloc[end_day - window : end_day].dropna()
+            matrix = sample.corr().values
+            off_diagonal = matrix[~np.eye(len(matrix), dtype=bool)]
+            eigenvalues = np.linalg.eigvalsh(np.nan_to_num(matrix, nan=0.0))
+            dependence_records.append(
+                {
+                    "day": end_day,
+                    "window": window,
+                    "average_pair_correlation": np.nanmean(off_diagonal),
+                    "first_pc_variance_share": eigenvalues[-1] / np.maximum(eigenvalues.sum(), 1e-12),
+                    "median_annualized_volatility": np.nanmedian(sample.std() * np.sqrt(TRADING_DAYS)),
+                }
+            )
+    dependence = pd.DataFrame(dependence_records)
+    dependence.to_csv(tables / "rolling_dependence_regimes.csv", index=False)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+    for window, group in dependence.groupby("window"):
+        axes[0].plot(group.day, group.average_pair_correlation, label=f"{window}d")
+        axes[1].plot(group.day, group.first_pc_variance_share, label=f"{window}d")
+        axes[2].plot(group.day, group.median_annualized_volatility, label=f"{window}d")
+    axes[0].set_ylabel("Average pair correlation")
+    axes[1].set_ylabel("PC1 variance share")
+    axes[2].set_ylabel("Median annualized vol")
+    axes[2].set_xlabel("Day")
+    axes[0].set_title("Rolling dependence and volatility regimes")
+    axes[0].legend(ncol=3)
+    for axis in axes:
+        axis.grid(alpha=0.2)
+    savefig(figures / "20_rolling_dependence_regimes.png")
+
     for ticker in prices:
         frame = technical_frame(prices[ticker])
         fig, axes = plt.subplots(4, 1, figsize=(13, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1, 1, 1]})
@@ -274,6 +328,7 @@ def create_report(prices_path: Path, output: Path) -> None:
         fig.tight_layout()
         savefig(technical / f"{ticker}.png")
 
+    latest_dependence = dependence.sort_values("day").groupby("window").tail(1).set_index("window")
     top_positive = summary.nlargest(5, "full_sample_sharpe").index.tolist()
     top_negative = summary.nsmallest(5, "full_sample_sharpe").index.tolist()
     mean_pair_corr = (correlation.values.sum() - len(correlation)) / (len(correlation) * (len(correlation) - 1))
@@ -291,6 +346,8 @@ Generated from `{prices_path.name}` with {len(prices)} daily observations and {p
 - Strongest full-sample drift: **{', '.join(top_positive)}**.
 - Weakest full-sample drift: **{', '.join(top_negative)}**.
 - 20-day reversal mean next-day cross-sectional IC: **{reversal20.mean_ic:.3f}** (t-stat **{reversal20.t_stat:.2f}**).
+- Day-500 average pair correlation over 20/60/120-day windows: **{latest_dependence.loc[20, 'average_pair_correlation']:.3f} / {latest_dependence.loc[60, 'average_pair_correlation']:.3f} / {latest_dependence.loc[120, 'average_pair_correlation']:.3f}**.
+- Day-500 median annualized volatility over 20/60/120-day windows: **{latest_dependence.loc[20, 'median_annualized_volatility']:.1%} / {latest_dependence.loc[60, 'median_annualized_volatility']:.1%} / {latest_dependence.loc[120, 'median_annualized_volatility']:.1%}**.
 
 These are exploratory in-sample statistics, not guarantees of hidden-window performance. Strategy selection should use walk-forward tests.
 
@@ -311,6 +368,8 @@ These are exploratory in-sample statistics, not guarantees of hidden-window perf
 ![Clustering](figures/13_correlation_dendrogram.png)
 ![Forward IC](figures/14_forward_ic.png)
 ![Regimes](figures/15_market_regimes.png)
+![Rolling correlation snapshots](figures/19_rolling_correlation_snapshots.png)
+![Rolling dependence regimes](figures/20_rolling_dependence_regimes.png)
 
 ## Per-asset technical dashboards
 
@@ -327,6 +386,8 @@ Walk-forward results are stored in `tables/walk_forward.csv`. The final visible-
 ## Machine-readable results
 
 The `tables/` directory contains the summary statistics, covariance/correlation matrices, rolling volatility, autocorrelations, PCA results, and forward information coefficients.
+
+The standalone interactive dashboard is available at `interactive_dashboard.html`; its covariance/correlation matrix can be moved through time and switched among 20-, 60-, and 120-day windows.
 """
     (output / "REPORT.md").write_text(report)
 
