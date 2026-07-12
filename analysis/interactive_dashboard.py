@@ -80,7 +80,7 @@ def main() -> None:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Algothon 2026 Quant Market Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.33.0/plotly.min.js"></script>
 <style>
   :root { color-scheme: light dark; --gap: 18px; }
   * { box-sizing: border-box; }
