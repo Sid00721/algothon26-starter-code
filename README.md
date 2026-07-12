@@ -32,3 +32,13 @@ Only when you're ready to submit: copy `teamName.py` to `<YourTeamName>.py` (mat
 ## Questions
 
 Post in the questions forum on our Discord - moderators are there to help.
+
+## Team research
+
+The reproducible quantitative EDA, per-asset technical dashboards, covariance/PCA analysis, strategy diagnostics, walk-forward results, and independent Claude review are under [`analysis/`](analysis/). Generate or refresh them with:
+
+```bash
+python analysis/quant_eda.py
+PYTHONPATH=. python analysis/walk_forward.py
+python analysis/strategy_diagnostics.py
+```
