@@ -1,106 +1,129 @@
-"""Algothon 2026 submission strategy.
+"""Aggregated residual lead-lag strategy for Algothon 2026.
 
-The portfolio combines volatility-normalised 5/20-day reversal with two
-stable relative-value relationships.  All sleeve signals are netted before
-one integer position is produced for each instrument.
+The model predicts the next ALGO-neutral residual return of each synthetic
+asset from the latest residual returns of all other synthetic assets.  ALGO
+hedges the realised common-factor exposure after integer share rounding.
 """
 
 import numpy as np
 
 
-VOLATILITY_LOOKBACK = 60
-SHORT_HORIZON = 5
-MEDIUM_HORIZON = 20
-SHORT_WEIGHT = 0.50
-MEDIUM_WEIGHT = 0.50
-SIGNAL_STRENGTH = 4.0
-SIGNAL_THRESHOLD = 0.25
+MIN_HISTORY = 60
+SIGNIFICANCE_SE = 1.0
+REVERSAL_WEIGHT = 0.20
+REVERSAL_LOOKBACK = 20
+HYSTERESIS_FRACTION = 0.30
+SIZING_MODE = "sign"
+ESTIMATION_WINDOW = 0
+FREEZE_ESTIMATION_AT = 0
+HEDGE_FRACTION = 1.0
 
-PAIR_LOOKBACK = 120
-PAIR_Z_LOOKBACK = 60
-PAIR_WEIGHT = 3.0
-PAIRS = ((1, 20), (8, 27))  # AENO/NWIG and HUXZ/ACAC
+ASSET_CAP = 10_000.0
+ALGO_CAP = 100_000.0
+ALGO_HEDGE_CAP_FRACTION = 0.999
 
-DEADBAND_FRACTION = 0.01
-
+_previous_direction = None
 _last_day_count = None
 _last_position = None
 
 
 def resetState():
-    """Reset the small no-trade-band cache (useful for independent backtests)."""
-    global _last_day_count, _last_position
+    """Clear state between independent evaluation runs."""
+    global _previous_direction, _last_day_count, _last_position
+    _previous_direction = None
     _last_day_count = None
     _last_position = None
 
 
+def _standardize_cross_section(values):
+    scale = values.std()
+    if scale < 1e-12:
+        return np.zeros_like(values)
+    return (values - values.mean()) / scale
+
+
 def getMyPosition(prcSoFar):
-    """Return one capped integer target position for every instrument."""
-    global _last_day_count, _last_position
+    """Return one legal integer position for each of the 51 instruments."""
+    global _previous_direction, _last_day_count, _last_position
 
     prices = np.asarray(prcSoFar, dtype=float)
     n_instruments, n_days = prices.shape
 
-    # Repeated evaluation of the same day must not advance internal state.
     if _last_day_count == n_days and _last_position is not None:
         return _last_position.copy()
     if _last_day_count is not None and n_days < _last_day_count:
         resetState()
 
-    if n_days <= MEDIUM_HORIZON:
-        target_shares = np.zeros(n_instruments, dtype=int)
+    positions = np.zeros(n_instruments, dtype=int)
+    log_returns = np.diff(np.log(prices), axis=1)
+    if log_returns.shape[1] < MIN_HISTORY or n_instruments != 51:
         _last_day_count = n_days
-        _last_position = target_shares
-        return target_shares.copy()
+        _last_position = positions
+        return positions.copy()
 
-    history_start = max(0, n_days - VOLATILITY_LOOKBACK - 1)
-    log_returns = np.diff(np.log(prices[:, history_start:]), axis=1)
-    volatility = np.maximum(np.std(log_returns, axis=1, ddof=1), 1e-6)
+    # Estimate cross-asset lead-lag structure only from ALGO-neutral residuals.
+    residual_history = log_returns[1:] - log_returns[0]
+    if FREEZE_ESTIMATION_AT > 0 and residual_history.shape[1] > FREEZE_ESTIMATION_AT:
+        estimation_sample = residual_history[:, :FREEZE_ESTIMATION_AT]
+    elif ESTIMATION_WINDOW > 0:
+        estimation_sample = residual_history[:, -ESTIMATION_WINDOW:]
+    else:
+        estimation_sample = residual_history
 
-    short_reversal = -np.log(prices[:, -1] / prices[:, -1 - SHORT_HORIZON])
-    short_reversal /= volatility * np.sqrt(SHORT_HORIZON)
-    medium_reversal = -np.log(prices[:, -1] / prices[:, -1 - MEDIUM_HORIZON])
-    medium_reversal /= volatility * np.sqrt(MEDIUM_HORIZON)
-    signal = SHORT_WEIGHT * short_reversal + MEDIUM_WEIGHT * medium_reversal
+    time_mean = estimation_sample.mean(axis=1, keepdims=True)
+    time_scale = np.maximum(estimation_sample.std(axis=1, keepdims=True), 1e-12)
+    standardized_estimation = (estimation_sample - time_mean) / time_scale
+    standardized_history = (residual_history - time_mean) / time_scale
 
-    # Add causal spread z-scores.  The correct ACAC column is index 27.
-    if n_days >= PAIR_LOOKBACK:
-        log_prices = np.log(prices[:, -PAIR_LOOKBACK:])
-        for first, second in PAIRS:
-            x = log_prices[second]
-            y = log_prices[first]
-            x_centered = x - x.mean()
-            denominator = max(np.dot(x_centered, x_centered), 1e-12)
-            beta = np.dot(x_centered, y - y.mean()) / denominator
-            spread = y - beta * x
-            recent_spread = spread[-PAIR_Z_LOOKBACK:]
-            spread_std = recent_spread.std(ddof=1)
-            if spread_std > 1e-8:
-                z_score = (spread[-1] - recent_spread.mean()) / spread_std
-                signal[first] -= PAIR_WEIGHT * z_score
-                signal[second] += PAIR_WEIGHT * np.sign(beta) * z_score
+    predictors = standardized_estimation[:, :-1]
+    targets = standardized_estimation[:, 1:]
+    n_pairs = predictors.shape[1]
+    lead_lag = predictors @ targets.T / n_pairs
+    np.fill_diagonal(lead_lag, 0.0)
 
-    # Weak signals are more likely to be noise than alpha.
-    active_signal = np.where(np.abs(signal) >= SIGNAL_THRESHOLD, signal, 0.0)
+    noise_floor = SIGNIFICANCE_SE / np.sqrt(n_pairs)
+    lead_lag[np.abs(lead_lag) < noise_floor] = 0.0
+    lead_signal = lead_lag.T @ standardized_history[:, -1]
+    lead_signal = _standardize_cross_section(lead_signal)
 
-    dollar_limits = np.full(n_instruments, 10_000.0)
-    if n_instruments:
-        dollar_limits[0] = 100_000.0
-    target_dollars = dollar_limits * np.tanh(SIGNAL_STRENGTH * active_signal)
+    reversal_signal = -standardized_history[:, -REVERSAL_LOOKBACK:].sum(axis=1)
+    reversal_signal = _standardize_cross_section(reversal_signal)
+    signal = (1.0 - REVERSAL_WEIGHT) * lead_signal + REVERSAL_WEIGHT * reversal_signal
+    signal -= signal.mean()
+
+    if SIZING_MODE == "sign":
+        scaled_target = np.sign(signal)
+    elif SIZING_MODE == "tanh":
+        scaled_target = np.tanh(signal)
+    elif SIZING_MODE == "rank":
+        ranks = np.argsort(np.argsort(signal))
+        scaled_target = (ranks - 0.5 * (len(signal) - 1)) / (0.5 * (len(signal) - 1))
+    else:
+        raise ValueError(f"unsupported SIZING_MODE: {SIZING_MODE}")
+
+    # Keep weak updates at their prior direction to suppress commission churn.
+    current_direction = np.sign(scaled_target)
+    if _previous_direction is not None and HYSTERESIS_FRACTION > 0:
+        threshold = HYSTERESIS_FRACTION * np.mean(np.abs(signal))
+        weak_update = np.abs(signal) < threshold
+        current_direction = np.where(weak_update, _previous_direction, current_direction)
+        scaled_target = np.where(weak_update, current_direction, scaled_target)
+    _previous_direction = current_direction.copy()
 
     current_prices = prices[:, -1]
-    share_limits = (dollar_limits / current_prices).astype(int)
-    target_shares = np.rint(target_dollars / current_prices).astype(int)
-    target_shares = np.clip(target_shares, -share_limits, share_limits).astype(int)
+    synthetic_limits = (ASSET_CAP / current_prices[1:]).astype(int)
+    positions[1:] = np.rint(scaled_target * synthetic_limits).astype(int)
+    positions[1:] = np.clip(positions[1:], -synthetic_limits, synthetic_limits)
 
-    # Retain the legal prior position when the requested trade is under 1% of
-    # that instrument's dollar cap.  This suppresses small commission churn.
-    if _last_day_count == n_days - 1 and _last_position is not None:
-        held = np.clip(_last_position, -share_limits, share_limits).astype(int)
-        trade_dollars = np.abs(target_shares - held) * current_prices
-        small_trade = trade_dollars <= DEADBAND_FRACTION * dollar_limits
-        target_shares = np.where(small_trade, held, target_shares).astype(int)
+    # Hedge the post-rounding dollar exposure, subject to ALGO's moving cap.
+    synthetic_dollars = positions[1:] * current_prices[1:]
+    hedge_dollars = -HEDGE_FRACTION * synthetic_dollars.sum()
+    hedge_cap = ALGO_HEDGE_CAP_FRACTION * ALGO_CAP
+    hedge_dollars = np.clip(hedge_dollars, -hedge_cap, hedge_cap)
+    algo_limit = int(ALGO_CAP / current_prices[0])
+    positions[0] = int(np.trunc(hedge_dollars / current_prices[0]))
+    positions[0] = int(np.clip(positions[0], -algo_limit, algo_limit))
 
     _last_day_count = n_days
-    _last_position = target_shares.copy()
-    return target_shares.astype(int)
+    _last_position = positions.astype(int)
+    return positions.astype(int).copy()

@@ -47,4 +47,11 @@ python analysis/strategy_diagnostics.py
 PYTHONPATH=. python analysis/stress_multisleeve.py
 python analysis/stress_final_strategy.py
 python analysis/stress_leadlag.py
+python analysis/index_strategy_lab.py
+python analysis/stress_index_candidates.py
 ```
+
+The current Negative Alpha submission artifact is
+[`analysis/output/negative alpha.zip`](analysis/output/negative%20alpha.zip).
+The index/stat-arb model comparison and final selection rationale are in
+[`analysis/output/INDEX_STAT_ARB_REVIEW.md`](analysis/output/INDEX_STAT_ARB_REVIEW.md).
