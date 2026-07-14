@@ -52,6 +52,8 @@ python analysis/stress_index_candidates.py
 python analysis/leadlag_improvement_lab.py
 python analysis/leadlag_refinement_lab.py
 python analysis/stress_leadlag_challenger.py
+python analysis/rayan_structural_lab.py
+python analysis/stress_rayan_beta.py
 ```
 
 The current Negative Alpha submission artifact is
@@ -63,3 +65,7 @@ The live score-564.14 artifact remains `analysis/output/negative alpha.zip`.
 The separately packaged 14 July challenger is
 `analysis/output/negative alpha challenger.zip`; its paired robustness audit is
 in `analysis/output/LEADLAG_CHALLENGER_REPORT.md`.
+
+Rayan's separately labelled structural comparison is packaged as
+`analysis/output/Rayan Beta 531.zip`, with the full contrarian audit in
+`analysis/output/RAYAN_BETA_531_REPORT.md`.

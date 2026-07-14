@@ -38,6 +38,9 @@ class Config:
     reversal_lookback: int = 20
     reversal_mode: str = "linear"
     hysteresis: float = 0.30
+    volatility_hysteresis: bool = False
+    volatility_hysteresis_lookback: int = 20
+    volatility_hysteresis_power: float = 1.0
     hedge_fraction: float = 1.0
     hedge_beta_window: int = 0
     hedge_beta_shrinkage: float = 0.0
@@ -212,7 +215,14 @@ class ResearchLeadLag:
 
         direction = np.sign(signal)
         if self.previous_direction is not None and self.config.hysteresis > 0:
-            weak = np.abs(signal) < self.config.hysteresis * np.mean(np.abs(signal))
+            threshold = self.config.hysteresis * np.mean(np.abs(signal))
+            if self.config.volatility_hysteresis:
+                lookback = self.config.volatility_hysteresis_lookback
+                asset_volatility = np.std(returns[1:, -lookback:], axis=1)
+                relative_volatility = asset_volatility / max(float(np.median(asset_volatility)), 1e-12)
+                multiplier = np.clip(relative_volatility, 0.5, 2.0) ** self.config.volatility_hysteresis_power
+                threshold = threshold * multiplier
+            weak = np.abs(signal) < threshold
             direction = np.where(weak, self.previous_direction, direction)
 
         if self.config.top_k < 50:
