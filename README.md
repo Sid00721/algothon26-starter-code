@@ -49,9 +49,17 @@ python analysis/stress_final_strategy.py
 python analysis/stress_leadlag.py
 python analysis/index_strategy_lab.py
 python analysis/stress_index_candidates.py
+python analysis/leadlag_improvement_lab.py
+python analysis/leadlag_refinement_lab.py
+python analysis/stress_leadlag_challenger.py
 ```
 
 The current Negative Alpha submission artifact is
 [`analysis/output/negative alpha.zip`](analysis/output/negative%20alpha.zip).
 The index/stat-arb model comparison and final selection rationale are in
 [`analysis/output/INDEX_STAT_ARB_REVIEW.md`](analysis/output/INDEX_STAT_ARB_REVIEW.md).
+
+The live score-564.14 artifact remains `analysis/output/negative alpha.zip`.
+The separately packaged 14 July challenger is
+`analysis/output/negative alpha challenger.zip`; its paired robustness audit is
+in `analysis/output/LEADLAG_CHALLENGER_REPORT.md`.
